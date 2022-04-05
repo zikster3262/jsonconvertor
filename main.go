@@ -1,23 +1,29 @@
 package main
 
 import (
+	"bytes"
 	js "encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/buger/jsonparser"
 	"gopkg.in/yaml.v2"
 )
 
 func main() {
 
-	// sess := session.Must(session.NewSessionWithOptions(session.Options{
-	// 	SharedConfigState: session.SharedConfigEnable,
-	// }))
+	bucket := os.Getenv("S3BUCKET")
 
-	// // Create an uploader with the session and default options
-	// uploader := s3manager.NewUploader(sess)
+	sess := session.Must(session.NewSessionWithOptions(session.Options{
+		SharedConfigState: session.SharedConfigEnable,
+	}))
+
+	svc := s3.New(sess)
 
 	jsonFile, err := os.Open("input.json")
 
@@ -39,18 +45,19 @@ func main() {
 			fmt.Printf("err: %v\n", err)
 		}
 
-		err = os.WriteFile("kubernetes/"+string(key)+".yaml", y, 0644)
+		r := bytes.NewReader(y)
+
+		result, err := svc.PutObject(&s3.PutObjectInput{
+			Bucket: aws.String(bucket),
+			Body:   r,
+			Key:    aws.String(string(key) + ".yaml"),
+		})
+
 		if err != nil {
-			panic(err)
+			log.Println(err)
 		}
 
-		// Upload the file to S3.
-		// result, err := uploader.Upload(&s3manager.UploadInput{
-		// 	Bucket: aws.String("testbucketportal"),
-		// 	Key:    aws.String(string(key) + ".yaml"),
-		// 	Body:   y,
-		// })
-
+		fmt.Println(result)
 		return nil
 	}, "preprequisities:", "services")
 
