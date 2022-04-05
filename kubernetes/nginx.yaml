@@ -1,0 +1,34 @@
+Version: 3.4.1
+controller:
+  electionID: ingress-controller-leader
+  ingressClassResource:
+    controllerValue: k8s.io/ingress-nginx
+    default: true
+    enabled: true
+    name: nginx
+  labels:
+    clusterName: one-q1l1l
+    customer: AccountID
+    environment: Prod
+    region: eu-central-1
+  metrics:
+    enabled: true
+    serviceMonitor:
+      additionalLabels:
+        release: prometheus
+      enabled: true
+      namespace: default
+  replicaCount: "3"
+  service:
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-additional-resource-tags: ClusterName=one-q1l1l,Customer=AccountID,Environment=Prod,Region=eu-central-1
+      service.beta.kubernetes.io/aws-load-balancer-backend-protocol: http
+      service.beta.kubernetes.io/aws-load-balancer-internal: "false"
+      service.beta.kubernetes.io/aws-load-balancer-type: elb
+    externalTrafficPolicy: Cluster
+defaultBackend:
+  podLabels:
+    clusterName: one-q1l1l
+    customer: AccountID
+    environment: Prod
+    region: eu-central-1

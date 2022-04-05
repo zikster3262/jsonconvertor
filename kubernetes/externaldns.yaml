@@ -1,0 +1,29 @@
+aws:
+  zoneType: public
+extraArgs:
+  aws-zones-cache-duration: ${external_dns_cache_duration}
+  min-event-sync-interval: 1m
+  txt-cache-interval: ${external_dns_cache_duration}
+extraEnvVars:
+- name: AWS_ACCESS_KEY_ID
+  value: XXX
+- name: AWS_SECRET_ACCESS_KEY
+  value: XXX
+interval: "5"
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    namespace: default
+    selector:
+      release: prometheus
+podLabels:
+  clusterName: one-q1l1l
+  customer: AccountID
+  environment: Prod
+  region: eu-central-1
+policy: upsert-only
+replicas: 1
+sources: null
+triggerLoopOnEvent: true
+txtOwnerId: one-q1l1l

@@ -1,0 +1,330 @@
+{
+  "global": {
+    "Name": "one-q1l1l",
+    "Version": "1.0"
+  },
+
+  "preprequisities:": {
+    "infrastructure": {
+      "Cidr_Block": "10.0.0.0/16",
+      "Nodes": 2,
+      "Node_Type": "m5.xlarge",
+      "Aurora_Type": "db4.mxlarge",
+      "Scalling_Policies": {}
+    },
+
+    "services": {
+      "nginx": {
+        "Version": "3.4.1",
+        "controller": {
+          "electionID": "ingress-controller-leader",
+          "ingressClassResource": {
+            "name": "nginx",
+            "enabled": true,
+            "default": true,
+            "controllerValue": "k8s.io/ingress-nginx"
+          },
+          "replicaCount": "3",
+          "labels": {
+            "clusterName": "one-q1l1l",
+            "customer": "AccountID",
+            "environment": "Prod",
+            "region": "eu-central-1"
+          },
+          "service": {
+            "externalTrafficPolicy": "Cluster",
+            "annotations": {
+              "service.beta.kubernetes.io/aws-load-balancer-additional-resource-tags": "ClusterName=one-q1l1l,Customer=AccountID,Environment=Prod,Region=eu-central-1",
+              "service.beta.kubernetes.io/aws-load-balancer-backend-protocol": "http",
+              "service.beta.kubernetes.io/aws-load-balancer-internal": "false",
+              "service.beta.kubernetes.io/aws-load-balancer-type": "elb"
+            }
+          },
+          "metrics": {
+            "enabled": true,
+            "serviceMonitor": {
+              "enabled": true,
+              "additionalLabels": {
+                "release": "prometheus"
+              },
+              "namespace": "default"
+            }
+          }
+        },
+        "defaultBackend": {
+          "podLabels": {
+            "clusterName": "one-q1l1l",
+            "customer": "AccountID",
+            "environment": "Prod",
+            "region": "eu-central-1"
+          }
+        }
+      },
+
+      "fluentbit": {
+        "Version": "5.4.2",
+        "podLabels": {
+          "clusterName": "one-q1l1l",
+          "customer": "AccountID",
+          "environment": "Prod",
+          "region": "eu-central-1"
+        },
+        "env": [
+          {
+            "name": "AWS_ACCESS_KEY_ID",
+            "value": "XXXX"
+          },
+          {
+            "name": "AWS_SECRET_ACCESS_KEY",
+            "value": "XXX"
+          },
+          {
+            "name": "AWS_DEFAULT_REGION",
+            "value": "eu-central-1"
+          }
+        ],
+        "extraVolumes": [
+          {
+            "name": "dedot-lua",
+            "configMap": {
+              "name": "fluentbit-dedot-lua"
+            }
+          }
+        ],
+        "extraVolumeMounts": [
+          {
+            "name": "dedot-lua",
+            "mountPath": "/dedot-lua"
+          }
+        ],
+        "serviceMonitor": {
+          "enabled": true,
+          "namespace": "default",
+          "interval": "10s",
+          "scrapeTimeout": "10s",
+          "selector": {
+            "release": "prometheus"
+          }
+        },
+        "config": {
+          "service": "[SERVICE]\n  Flush 1\n  Daemon Off\n  Log_Level ${fluent_bit_log_level}\n  Parsers_File parsers.conf\n  Parsers_File custom_parsers.conf\n  HTTP_Server On\n  HTTP_Listen 0.0.0.0\n  HTTP_Port 2020\n",
+          "inputs": "[INPUT]\n  Name tail\n  Path /var/log/containers/*.log\n  multiline.parser docker, cri\n  Tag kube.*\n  Mem_Buf_Limit ${fluent_bit_mem_buf}\n  Skip_Long_Lines On\n\n[INPUT]\n  Name systemd\n  Tag host.*\n  Systemd_Filter _SYSTEMD_UNIT=kubelet.service\n  Read_From_Tail On\n",
+          "filters": "[FILTER]\n  Name kubernetes\n  Match kube.*\n  Merge_Log On\n  Merge_Log_Key log_processed\n  Keep_Log Off\n  K8S-Logging.Parser On\n  K8S-Logging.Exclude On\n\n[FILTER]\n  Name    lua\n  Match   kube.*\n  script  /dedot-lua/dedot.lua\n  call    dedot\n",
+          "outputs": "[OUTPUT]\n  Name es\n  Match kube.*_${fluent_bit_output_namespace}_*\n  Host ${fluent_bit_output_elastic}\n  Logstash_Format On\n  Logstash_Prefix log-default\n  Replace_Dots    On\n  Retry_Limit False\n",
+          "customParsers": "[PARSER]\n  Name docker\n  Format json_lines\n  Time_Keep Off\n  Time_Key time\n  Time_Format %Y-%m-%dT%H:%M:%S.%L\n"
+        }
+      },
+      "externaldns": {
+        "interval": "5",
+        "replicas": 1,
+        "extraEnvVars": [
+          {
+            "name": "AWS_ACCESS_KEY_ID",
+            "value": "XXX"
+          },
+          {
+            "name": "AWS_SECRET_ACCESS_KEY",
+            "value": "XXX"
+          }
+        ],
+        "extraArgs": {
+          "aws-zones-cache-duration": "${external_dns_cache_duration}",
+          "min-event-sync-interval": "1m",
+          "txt-cache-interval": "${external_dns_cache_duration}"
+        },
+        "podLabels": {
+          "clusterName": "one-q1l1l",
+          "customer": "AccountID",
+          "environment": "Prod",
+          "region": "eu-central-1"
+        },
+        "metrics": {
+          "enabled": true,
+          "serviceMonitor": {
+            "enabled": true,
+            "namespace": "default",
+            "selector": {
+              "release": "prometheus"
+            }
+          }
+        },
+        "policy": "upsert-only",
+        "triggerLoopOnEvent": true,
+        "txtOwnerId": "one-q1l1l",
+        "aws": {
+          "zoneType": "public"
+        },
+        "sources": null
+      },
+      "prometheus": {
+        "Version": "6.2.1",
+        "enabled": true,
+        "prometheusSpec": {
+          "externalLabels": {
+            "clusterName": "one-q1l1l",
+            "customer": "AccountID",
+            "environment": "Prod",
+            "region": "eu-central-1"
+          },
+          "externalUrl": "https://${prometheus_ingress_hostname}/prometheus",
+          "replicas": 1,
+          "shards": 1,
+          "podMetadata": {
+            "labels": {
+              "clusterName": "one-q1l1l",
+              "customer": "AccountID",
+              "environment": "Prod",
+              "region": "eu-central-1"
+            }
+          },
+          "storageSpec": {
+            "volumeClaimTemplate": {
+              "spec": {
+                "storageClassName": "${prometheus_storage_class}",
+                "accessModes": ["ReadWriteOnce"],
+                "resources": {
+                  "requests": {
+                    "storage": "30Gi"
+                  }
+                }
+              }
+            }
+          },
+          "additionalScrapeConfigs": "${prometheus_additional_scrape_configs}",
+          "additionalAlertRelabelConfigs": "${prometheus_drop_non_customer_alerts}",
+          "thanos": {
+            "objectStorageConfig": {
+              "key": "thanos.yaml",
+              "name": "s3-thanos-sidecar"
+            }
+          },
+          "portName": "web"
+        },
+        "additionalServiceMonitors": [
+          {
+            "name": "prometheus-blackbox-exporter",
+            "additionalLabels": {
+              "app.kubernetes.io/instance": "prometheus-blackbox-exporter",
+              "app.kubernetes.io/name": "prometheus-blackbox-exporter",
+              "release": "prometheus"
+            },
+            "selector": {
+              "matchLabels": {
+                "app.kubernetes.io/instance": "prometheus-blackbox-exporter",
+                "app.kubernetes.io/name": "prometheus-blackbox-exporter"
+              }
+            },
+            "endpoints": [
+              {
+                "port": "http"
+              }
+            ]
+          }
+        ]
+      }
+    },
+
+    "helm": {
+      "Version": "13.5",
+      "Spec": {
+        "Ai Core": {
+          "JWT": {
+            "key_content": {
+              "kty": "EC",
+              "crv": "P-256",
+              "kid": "d96g2a2mjP1ELh8_gbSGSekrhJ_Te0cOnGBBA_9YLGU",
+              "x": "17d31s8AywVQ3-YgnzeqqZZZc4T1FtQhgtMnx4j9A2M",
+              "y": "4Q3BJKrhs54_bWVBL2sqn1q9VpWgJdxD4Tv4iraqQFQ",
+              "alg": "ES256"
+            },
+            "key_fp": "d96g2a2mjP1ELh8_gbSGSekrhJ_Te0cOnGBBA_9YLGU",
+            "key_private": "eyJrdHkiOiJFQyIsImQiOiJsMGZ4XzBhYkgzVHdOU3I3R0F5My0tSVdoMWJaVE9iSU1QVnhLa21ubUYwIiwiY3J2IjoiUC0yNTYiLCJraWQiOiJkOTZnMmEybWpQMUVMaDhfZ2JTR1Nla3JoSl9UZTBjT25HQkJBXzlZTEdVIiwieCI6IjE3ZDMxczhBeXdWUTMtWWduemVxcVpaWmM0VDFGdFFoZ3RNbng0ajlBMk0iLCJ5IjoiNFEzQkpLcmhzNTRfYldWQkwyc3FuMXE5VnBXZ0pkeEQ0VHY0aXJhcVFGUSIsImFsZyI6IkVTMjU2In0=",
+            "key_revoked": false
+          }
+        },
+        "Cc": {
+          "Enabled": false
+        },
+        "Content": {
+          "Demo Content": {
+            "Enabled": true
+          }
+        },
+        "Dpe": {
+          "JWT": {
+            "key_content": {
+              "kty": "EC",
+              "crv": "P-256",
+              "kid": "S1PXOse34oAjH9Dr_dkD5KR-7-uAxBacWT0KCONJDgY",
+              "x": "pa-gWd3GDsh74gXpdkVfodFymDODZAgc0YLns4QH0MM",
+              "y": "gdR0oUBOlYuWPPQWeFHHLD_T1Qa0fobm1BR26hSZm3Q",
+              "alg": "ES256"
+            },
+            "key_fp": "S1PXOse34oAjH9Dr_dkD5KR-7-uAxBacWT0KCONJDgY",
+            "key_private": "eyJrdHkiOiJFQyIsImQiOiJNMDdwMjFRS1JYZWZSUWtVUkMyRXUtQnExeXRUQ0dLMzFPRGE0VnR6VHI0IiwiY3J2IjoiUC0yNTYiLCJraWQiOiJTMVBYT3NlMzRvQWpIOURyX2RrRDVLUi03LXVBeEJhY1dUMEtDT05KRGdZIiwieCI6InBhLWdXZDNHRHNoNzRnWHBka1Zmb2RGeW1ET0RaQWdjMFlMbnM0UUgwTU0iLCJ5IjoiZ2RSMG9VQk9sWXVXUFBRV2VGSEhMRF9UMVFhMGZvYm0xQlIyNmhTWm0zUSIsImFsZyI6IkVTMjU2In0=",
+            "key_revoked": false
+          },
+          "Replicas": 1
+        },
+        "Dpm": {
+          "JWT": {
+            "key_content": {
+              "kty": "EC",
+              "crv": "P-256",
+              "kid": "17SaRs4xpqVfJgkm9M9daRBHJS-LpwyxUND4A2g_JwU",
+              "x": "b8d1a5T14PDki2gC7TBFn1Hjly27FdopZIDtDeL2oZU",
+              "y": "V_nC3VymbeQ-5Jd-nPXAwtj7QiBUUBu1HMqOOje5_wo",
+              "alg": "ES256"
+            },
+            "key_fp": "17SaRs4xpqVfJgkm9M9daRBHJS-LpwyxUND4A2g_JwU",
+            "key_private": "eyJrdHkiOiJFQyIsImQiOiJtdW1pTTZONHdTYXF2Rk0yVnlmLXItTEs3cFVqQXJ3VnRLd2RvUzJjWVFFIiwiY3J2IjoiUC0yNTYiLCJraWQiOiIxN1NhUnM0eHBxVmZKZ2ttOU05ZGFSQkhKUy1McHd5eFVORDRBMmdfSndVIiwieCI6ImI4ZDFhNVQxNFBEa2kyZ0M3VEJGbjFIamx5MjdGZG9wWklEdERlTDJvWlUiLCJ5IjoiVl9uQzNWeW1iZVEtNUpkLW5QWEF3dGo3UWlCVVVCdTFITXFPT2plNV93byIsImFsZyI6IkVTMjU2In0=",
+            "key_revoked": false
+          }
+        },
+        "Global": {
+          "Application Password": "wykj18wz",
+          "Hostname": "one-q1l1l.ataccama.enterprises",
+          "Name": "one-q1l1l"
+        },
+        "Keycloak": {
+          "Admin Pass": "xhdruo6j9p1izuh2ikfyoso2"
+        },
+        "Minio": {
+          "Config": {
+            "Secret Key": "5i8o0prgtum5d97uw2uzftfr"
+          }
+        },
+        "Mmm Be": {
+          "JWT": {
+            "key_content": {
+              "kty": "EC",
+              "crv": "P-256",
+              "kid": "WtE0j7utabbFay4lEgr2pixAL9X74c3qv6SVbpuGhpY",
+              "x": "k_vY8BRbgr0JdzU8s3yG1_38nEuxlehRX-GO4ITpkOg",
+              "y": "PZZ_Vnn-6Ozu6O4vln3DV5Wqsr-gdw9aTup74c8NMic",
+              "alg": "ES256"
+            },
+            "key_fp": "WtE0j7utabbFay4lEgr2pixAL9X74c3qv6SVbpuGhpY",
+            "key_private": "eyJrdHkiOiJFQyIsImQiOiI0bXJwTWQ5bktzX3JfRHNpYlBpYnJ2ajlUbXhqS0xaYVFXN0FtTC1qeHVRIiwiY3J2IjoiUC0yNTYiLCJraWQiOiJXdEUwajd1dGFiYkZheTRsRWdyMnBpeEFMOVg3NGMzcXY2U1ZicHVHaHBZIiwieCI6Imtfdlk4QlJiZ3IwSmR6VThzM3lHMV8zOG5FdXhsZWhSWC1HTzRJVHBrT2ciLCJ5IjoiUFpaX1Zubi02T3p1Nk80dmxuM0RWNVdxc3ItZ2R3OWFUdXA3NGM4Tk1pYyIsImFsZyI6IkVTMjU2In0=",
+            "key_revoked": false
+          }
+        },
+        "Mmm Fe": {
+          "JWT": {
+            "key_content": {
+              "kty": "EC",
+              "crv": "P-256",
+              "kid": "-cd-DIUalYpyGefFVtbPF6A-cb25ZfYp89E41D_hQuk",
+              "x": "YMxYAF38md1xEwnF3ayaoe1-7FnRVXu8TfzbazZbQ7o",
+              "y": "QxRxeHNlxvNLN2UFJ2i3ywWsJS839c416vtNw-czOZQ",
+              "alg": "ES256"
+            },
+            "key_fp": "-cd-DIUalYpyGefFVtbPF6A-cb25ZfYp89E41D_hQuk",
+            "key_private": "eyJrdHkiOiJFQyIsImQiOiJTdVROc1Q5ZFBlaXhnb1JCWHZOS29UUnRsbG9rZF9aMHYxU1cxTnp2Qy13IiwiY3J2IjoiUC0yNTYiLCJraWQiOiItY2QtRElVYWxZcHlHZWZGVnRiUEY2QS1jYjI1WmZZcDg5RTQxRF9oUXVrIiwieCI6IllNeFlBRjM4bWQxeEV3bkYzYXlhb2UxLTdGblJWWHU4VGZ6YmF6WmJRN28iLCJ5IjoiUXhSeGVITmx4dk5MTjJVRkoyaTN5d1dzSlM4MzljNDE2dnROdy1jek9aUSIsImFsZyI6IkVTMjU2In0=",
+            "key_revoked": false
+          }
+        }
+      }
+    }
+  }
+}
