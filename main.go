@@ -2,12 +2,15 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	js "encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 
+	"github.com/aws/aws-lambda-go/events"
+	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
@@ -15,9 +18,7 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-func main() {
-
-	bucket := os.Getenv("S3BUCKET")
+func HandleRequest(ctx context.Context, event events.SQSEvent) {
 
 	sess := session.Must(session.NewSessionWithOptions(session.Options{
 		SharedConfigState: session.SharedConfigEnable,
@@ -25,14 +26,21 @@ func main() {
 
 	svc := s3.New(sess)
 
-	jsonFile, err := os.Open("input.json")
+	bucket := os.Getenv("S3BUCKET")
 
+	var e map[string]interface{}
+
+	body := event.Records[0].Body
+	err := js.Unmarshal([]byte(body), &e)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
+	}
+	b, err := json.Marshal(e)
+	if err != nil {
+		panic(err)
 	}
 
-	byteValue, _ := ioutil.ReadAll(jsonFile)
-	jsonparser.ObjectEach(byteValue, func(key []byte, value []byte, dataType jsonparser.ValueType, offset int) error {
+	jsonparser.ObjectEach(b, func(key []byte, value []byte, dataType jsonparser.ValueType, offset int) error {
 
 		var json map[string]interface{}
 
@@ -61,5 +69,8 @@ func main() {
 		return nil
 	}, "preprequisities:", "services")
 
-	defer jsonFile.Close()
+}
+
+func main() {
+	lambda.Start(HandleRequest)
 }
