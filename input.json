@@ -1,7 +1,8 @@
 {
   "global": {
     "Name": "one-q1l1l",
-    "Version": "1.0"
+    "Version": "1.0",
+    "Region": "eu-central-1"
   },
 
   "preprequisities:": {
@@ -14,8 +15,7 @@
     },
 
     "services": {
-      "nginx": {
-        "Version": "3.4.1",
+      "ingress-nginx": {
         "controller": {
           "electionID": "ingress-controller-leader",
           "ingressClassResource": {
@@ -61,42 +61,19 @@
         }
       },
 
-      "fluentbit": {
-        "Version": "5.4.2",
+      "fluent-bit": {
+        "labels": {
+          "clusterName": "one-q1l1l",
+          "customer": "AccountID",
+          "environment": "Prod",
+          "region": "eu-central-1"
+        },
         "podLabels": {
           "clusterName": "one-q1l1l",
           "customer": "AccountID",
           "environment": "Prod",
           "region": "eu-central-1"
         },
-        "env": [
-          {
-            "name": "AWS_ACCESS_KEY_ID",
-            "value": "XXXX"
-          },
-          {
-            "name": "AWS_SECRET_ACCESS_KEY",
-            "value": "XXX"
-          },
-          {
-            "name": "AWS_DEFAULT_REGION",
-            "value": "eu-central-1"
-          }
-        ],
-        "extraVolumes": [
-          {
-            "name": "dedot-lua",
-            "configMap": {
-              "name": "fluentbit-dedot-lua"
-            }
-          }
-        ],
-        "extraVolumeMounts": [
-          {
-            "name": "dedot-lua",
-            "mountPath": "/dedot-lua"
-          }
-        ],
         "serviceMonitor": {
           "enabled": true,
           "namespace": "default",
@@ -107,12 +84,62 @@
           }
         },
         "config": {
-          "service": "[SERVICE]\n  Flush 1\n  Daemon Off\n  Log_Level ${fluent_bit_log_level}\n  Parsers_File parsers.conf\n  Parsers_File custom_parsers.conf\n  HTTP_Server On\n  HTTP_Listen 0.0.0.0\n  HTTP_Port 2020\n",
-          "inputs": "[INPUT]\n  Name tail\n  Path /var/log/containers/*.log\n  multiline.parser docker, cri\n  Tag kube.*\n  Mem_Buf_Limit ${fluent_bit_mem_buf}\n  Skip_Long_Lines On\n\n[INPUT]\n  Name systemd\n  Tag host.*\n  Systemd_Filter _SYSTEMD_UNIT=kubelet.service\n  Read_From_Tail On\n",
-          "filters": "[FILTER]\n  Name kubernetes\n  Match kube.*\n  Merge_Log On\n  Merge_Log_Key log_processed\n  Keep_Log Off\n  K8S-Logging.Parser On\n  K8S-Logging.Exclude On\n\n[FILTER]\n  Name    lua\n  Match   kube.*\n  script  /dedot-lua/dedot.lua\n  call    dedot\n",
-          "outputs": "[OUTPUT]\n  Name es\n  Match kube.*_${fluent_bit_output_namespace}_*\n  Host ${fluent_bit_output_elastic}\n  Logstash_Format On\n  Logstash_Prefix log-default\n  Replace_Dots    On\n  Retry_Limit False\n",
-          "customParsers": "[PARSER]\n  Name docker\n  Format json_lines\n  Time_Keep Off\n  Time_Key time\n  Time_Format %Y-%m-%dT%H:%M:%S.%L\n"
-        }
+          "service": "[SERVICE]\n    Daemon Off\n    Flush {{ .Values.flush }}\n    Log_Level {{ .Values.logLevel }}\n    Parsers_File parsers.conf\n    Parsers_File custom_parsers.conf\n    HTTP_Server On\n    HTTP_Listen 0.0.0.0\n    HTTP_Port {{ .Values.metricsPort }}\n    Health_Check On\n",
+          "inputs": "[INPUT]\n    Name tail\n    Path /var/log/containers/*.log\n    multiline.parser docker, cri\n    Tag kube.*\n    Mem_Buf_Limit 5MB\n    Skip_Long_Lines On\n[INPUT]\n    Name systemd\n    Tag host.*\n    Systemd_Filter _SYSTEMD_UNIT=kubelet.service\n    Read_From_Tail On\n",
+          "filters": "[FILTER]\n    Name kubernetes\n    Match kube.*\n    Merge_Log On\n    Keep_Log Off\n    K8S-Logging.Parser On\n    K8S-Logging.Exclude On\n",
+          "outputs": "[OUTPUT]\n    Name es\n    Match kube.*\n    Host elasticsearch-master\n    Logstash_Format On\n    Retry_Limit False\n[OUTPUT]\n    Name es\n    Match host.*\n    Host elasticsearch-master\n    Logstash_Format On\n    Logstash_Prefix node\n    Retry_Limit False\n",
+          "customParsers": "[PARSER]\n    Name docker_no_time\n    Format json\n    Time_Keep Off\n    Time_Key time\n    Time_Format %Y-%m-%dT%H:%M:%S.%L\n",
+          "extraFiles": {}
+        },
+        "volumeMounts": [
+          {
+            "name": "config",
+            "mountPath": "/fluent-bit/etc/fluent-bit.conf",
+            "subPath": "fluent-bit.conf"
+          },
+          {
+            "name": "config",
+            "mountPath": "/fluent-bit/etc/custom_parsers.conf",
+            "subPath": "custom_parsers.conf"
+          }
+        ],
+        "daemonSetVolumes": [
+          {
+            "name": "varlog",
+            "hostPath": {
+              "path": "/var/log"
+            }
+          },
+          {
+            "name": "varlibdockercontainers",
+            "hostPath": {
+              "path": "/var/lib/docker/containers"
+            }
+          },
+          {
+            "name": "etcmachineid",
+            "hostPath": {
+              "path": "/etc/machine-id",
+              "type": "File"
+            }
+          }
+        ],
+        "daemonSetVolumeMounts": [
+          {
+            "name": "varlog",
+            "mountPath": "/var/log"
+          },
+          {
+            "name": "varlibdockercontainers",
+            "mountPath": "/var/lib/docker/containers",
+            "readOnly": true
+          },
+          {
+            "name": "etcmachineid",
+            "mountPath": "/etc/machine-id",
+            "readOnly": true
+          }
+        ]
       },
       "externaldns": {
         "interval": "5",
@@ -132,12 +159,6 @@
           "min-event-sync-interval": "1m",
           "txt-cache-interval": "${external_dns_cache_duration}"
         },
-        "podLabels": {
-          "clusterName": "one-q1l1l",
-          "customer": "AccountID",
-          "environment": "Prod",
-          "region": "eu-central-1"
-        },
         "metrics": {
           "enabled": true,
           "serviceMonitor": {
@@ -156,8 +177,7 @@
         },
         "sources": null
       },
-      "prometheus": {
-        "Version": "6.2.1",
+      "kube-prometheus-stack": {
         "enabled": true,
         "prometheusSpec": {
           "externalLabels": {
@@ -166,7 +186,6 @@
             "environment": "Prod",
             "region": "eu-central-1"
           },
-          "externalUrl": "https://${prometheus_ingress_hostname}/prometheus",
           "replicas": 1,
           "shards": 1,
           "podMetadata": {
@@ -176,55 +195,12 @@
               "environment": "Prod",
               "region": "eu-central-1"
             }
-          },
-          "storageSpec": {
-            "volumeClaimTemplate": {
-              "spec": {
-                "storageClassName": "${prometheus_storage_class}",
-                "accessModes": ["ReadWriteOnce"],
-                "resources": {
-                  "requests": {
-                    "storage": "30Gi"
-                  }
-                }
-              }
-            }
-          },
-          "additionalScrapeConfigs": "${prometheus_additional_scrape_configs}",
-          "additionalAlertRelabelConfigs": "${prometheus_drop_non_customer_alerts}",
-          "thanos": {
-            "objectStorageConfig": {
-              "key": "thanos.yaml",
-              "name": "s3-thanos-sidecar"
-            }
-          },
-          "portName": "web"
-        },
-        "additionalServiceMonitors": [
-          {
-            "name": "prometheus-blackbox-exporter",
-            "additionalLabels": {
-              "app.kubernetes.io/instance": "prometheus-blackbox-exporter",
-              "app.kubernetes.io/name": "prometheus-blackbox-exporter",
-              "release": "prometheus"
-            },
-            "selector": {
-              "matchLabels": {
-                "app.kubernetes.io/instance": "prometheus-blackbox-exporter",
-                "app.kubernetes.io/name": "prometheus-blackbox-exporter"
-              }
-            },
-            "endpoints": [
-              {
-                "port": "http"
-              }
-            ]
           }
-        ]
+        }
       }
     },
 
-    "helm": {
+    "Gen2": {
       "Version": "13.5",
       "Spec": {
         "Ai Core": {

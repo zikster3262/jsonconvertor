@@ -1,32 +1,21 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	js "encoding/json"
 	"fmt"
 	"log"
-	"os"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/buger/jsonparser"
 	"gopkg.in/yaml.v2"
 )
 
 func HandleRequest(ctx context.Context, event events.SQSEvent) {
 
-	sess := session.Must(session.NewSessionWithOptions(session.Options{
-		SharedConfigState: session.SharedConfigEnable,
-	}))
-
-	svc := s3.New(sess)
-
-	bucket := os.Getenv("S3BUCKET")
+	m := make(map[string][]byte)
 
 	var e map[string]interface{}
 
@@ -53,22 +42,18 @@ func HandleRequest(ctx context.Context, event events.SQSEvent) {
 			fmt.Printf("err: %v\n", err)
 		}
 
-		r := bytes.NewReader(y)
+		m[string(key)] = y
 
-		result, err := svc.PutObject(&s3.PutObjectInput{
-			Bucket: aws.String(bucket),
-			Body:   r,
-			Key:    aws.String(string(key) + ".yaml"),
-		})
-
-		if err != nil {
-			log.Println(err)
-		}
-
-		fmt.Println(result)
 		return nil
 	}, "preprequisities:", "services")
 
+	prometheus := NewChart("helm-charts", "https://prometheus-community.github.io/helm-charts", "helm-charts/kube-prometheus-stack", "default", m["kube-prometheus-stack"])
+	nginx := NewChart("ingress-nginx", "https://kubernetes.github.io/ingress-nginx", "ingress-nginx/ingress-nginx", "default", m["ingress-nginx"])
+	fluentbit := NewChart("fluent", "https://fluent.github.io/helm-charts", "fluent/fluent-bit", "default", m["fluent-bit"])
+
+	prometheus.Upload("prometheus", prometheus.Template())
+	nginx.Upload("nginx", nginx.Template())
+	fluentbit.Upload("fluent-bit", nginx.Template())
 }
 
 func main() {
