@@ -1,8 +1,8 @@
 {
   "global": {
-    "Name": "one-q1l1l",
-    "Version": "1.0",
-    "Region": "eu-central-1"
+    "name": "one-q1l1l",
+    "version": "1.0",
+    "region": "eu-central-1"
   },
 
   "preprequisities:": {
@@ -141,23 +141,23 @@
           }
         ]
       },
-      "externaldns": {
-        "interval": "5",
+      "external-dns": {
+        "interval": "24h",
         "replicas": 1,
         "extraEnvVars": [
           {
             "name": "AWS_ACCESS_KEY_ID",
-            "value": "XXX"
+            "value": "XXXXX"
           },
           {
             "name": "AWS_SECRET_ACCESS_KEY",
-            "value": "XXX"
+            "value": "XXXXXX"
           }
         ],
         "extraArgs": {
-          "aws-zones-cache-duration": "${external_dns_cache_duration}",
+          "aws-zones-cache-duration": "24h",
           "min-event-sync-interval": "1m",
-          "txt-cache-interval": "${external_dns_cache_duration}"
+          "txt-cache-interval": "24h"
         },
         "metrics": {
           "enabled": true,
@@ -171,13 +171,16 @@
         },
         "policy": "upsert-only",
         "triggerLoopOnEvent": true,
-        "txtOwnerId": "one-q1l1l",
+        "txtOwnerId": "test-cluster",
         "aws": {
           "zoneType": "public"
         },
-        "sources": null
+        "sources": ["ingress"]
       },
       "kube-prometheus-stack": {
+        "grafana": {
+          "enabled": false
+        },
         "enabled": true,
         "prometheusSpec": {
           "externalLabels": {

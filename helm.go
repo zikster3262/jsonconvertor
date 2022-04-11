@@ -45,7 +45,7 @@ func (chart chartRepo) Template() []byte {
 
 	helmClient, err := helmclient.New(opt)
 	if err != nil {
-		panic(err)
+		log.Printf("Error: %v", err)
 	}
 	_ = helmClient
 
@@ -55,7 +55,7 @@ func (chart chartRepo) Template() []byte {
 	}
 
 	if err := helmClient.AddOrUpdateChartRepo(chartRepo); err != nil {
-		panic(err)
+		log.Printf("Error: %v", err)
 	}
 
 	chartSpec := helmclient.ChartSpec{
@@ -69,7 +69,7 @@ func (chart chartRepo) Template() []byte {
 
 	chartTemp, err := helmClient.TemplateChart(&chartSpec)
 	if err != nil {
-		panic(err)
+		log.Printf("Error: %v", err)
 	}
 
 	return chartTemp
@@ -93,8 +93,10 @@ func (chart chartRepo) Upload(name string, value []byte) {
 		Key:    aws.String(string(name) + ".yaml"),
 	})
 
+	log.Printf("File: %v.yaml was uploaded do S3 %v bucket", name, bucket)
+
 	if err != nil {
-		log.Println(err)
+		log.Printf("Error: %v", err)
 	}
 	fmt.Println(result)
 
